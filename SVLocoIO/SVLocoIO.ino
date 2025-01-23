@@ -1,6 +1,6 @@
 /**************************************************************************
-    LocoIno - Configurable Arduino Loconet Module
-    Copyright (C) 2014 Daniel Guisado Serra
+    LocoIno - Configurable Arduino LocoNet Module
+    Copyright (C) 2014-2025 Daniel Guisado Serra
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -20,30 +20,32 @@
  ------------------------------------------------------------------------
  DESCRIPTION:
     This software emulates the functionality of a GCA50 board from Peter
-    Giling (Giling Computer Applications). This is a Loconet Interface
+    Giling (Giling Computer Applications). This is a LocoNet Interface
     with 16 I/O that can be individually configured as Input (block sensors)
     or Outputs (switches, lights,...).
-    Configuration is done through SV Loconet protocol and can be configured
+    Configuration is done through SV LocoNet protocol and can be configured
     from Rocrail (Programming->GCA->GCA50).
  ------------------------------------------------------------------------
  PIN ASSIGNMENT:
-   0,1 -> Serial, used to debug and Loconet Monitor (uncomment DEBUG)
+   0,1 -> Serial, used to debug and LocoNet Monitor (uncomment DEBUG)
    2,3,4,5,6 -> Configurable I/O from 1 to 5
-   7 -> Loconet TX (connected to GCA185 shield)
-   8 -> Loconet RX (connected to GCA185 shield)
+   7 -> LocoNet TX (connected to GCA185 shield)
+   8 -> LocoNet RX (connected to GCA185 shield)
    9,10,11,12,13 -> Configurable I/O from 6 to 10
    A0,A1,A2,A3,A4,A5-> Configurable I/O from 11 to 16
  ------------------------------------------------------------------------
  CREDITS: 
- * Based on MRRwA Loconet libraries for Arduino - http://mrrwa.org/ and 
-   the Loconet Monitor example.
+ * Based on MRRwA LocoNet libraries for Arduino - http://mrrwa.org/ and 
+   the LocoNet Monitor example.
  * Inspired in GCA50 board from Peter Giling - http://www.phgiling.net/
  * Idea also inspired in LocoShield from SPCoast - http://www.scuba.net/
  * Thanks also to Rocrail group - http://www.rocrail.org
  ------------------------------------------------------------------------
  LAST CHANGES:
- 1/9/2019 - Inform state of all inputs at power on, depends on the define #INFORMATPOWERON
-          - Bug fixed on input numbers, they are stored in value1 and value2 different than outputs
+ 1/9/2019  - Inform state of all inputs at power on, depends on the define #INFORMATPOWERON
+           - Bug fixed on input numbers, they are stored in value1 and value2 different than outputs
+ 22/1/2025 - Access version as SV100, code documentation
+ TODO      - used SV0 config for outputs/inputs eg. blink, INFORMATPOWERON
 *************************************************************************/
 
 #include <LocoNet.h>
@@ -52,9 +54,9 @@
 //Uncomment this line to debug through the serial monitor
 #define DEBUG
 //Uncomment this line to do not inform of the inputs state at power on
-#define INFORMATPOWERON
+#define INFORMATPOWERON // also stored in SV0 bit x
 
-#define VERSION 106
+#define VERSION 107
 
 namespace {
 //#define VIDA_LOCOSHIELD_NANO 1
@@ -123,7 +125,8 @@ void setup()
     svtable.svt.vrsion=VERSION;
     svtable.svt.addr_low=81;
     svtable.svt.addr_high=1;
-    EEPROM.write(0,VERSION);
+    EEPROM.write(0,0); // HDL LocoIO compatible board config (refresh at power on, blink rate etc.)
+    EEPROM.write(100,VERSION); // HDL LocoIO compatible
     EEPROM.write(1, svtable.svt.addr_low);
     EEPROM.write(2, svtable.svt.addr_high);
   }
@@ -197,7 +200,7 @@ void loop()
     Serial.println();
     #endif  
 
-    // If this packet was not a Switch or Sensor Message checks por PEER packet
+    // If this packet was not a Switch or Sensor Message checks for PEER packet
     if(!LocoNet.processSwitchSensorMessage(LnPacket))
     {             
       processPeerPacket();
@@ -401,7 +404,7 @@ boolean processPeerPacket()
   }
     
 
-  //Set high bits in right position
+  //Set high bits in correct position
   bitWrite(LnPacket->px.d1,7,bitRead(LnPacket->px.pxct1,0));
   bitWrite(LnPacket->px.d2,7,bitRead(LnPacket->px.pxct1,1));
   bitWrite(LnPacket->px.d3,7,bitRead(LnPacket->px.pxct1,2));
@@ -414,27 +417,31 @@ boolean processPeerPacket()
 
   //OPC_PEER_XFER D1 -> Command (1 SV write, 2 SV read)
   //OPC_PEER_XFER D2 -> Register to read or write
+
+  // Read command
   if (LnPacket->px.d1==2)
   {
     #ifdef DEBUG
     Serial.print("READ ");Serial.print(LnPacket->px.d2);Serial.print(" ");Serial.print(LnPacket->px.d2+1);Serial.print(" ");Serial.println(LnPacket->px.d2+2);
-    #endif
+    #endif  // d2 = SV requested
     sendPeerPacket(svtable.data[LnPacket->px.d2], svtable.data[LnPacket->px.d2+1], svtable.data[LnPacket->px.d2+2]);
     return (true);
   }
   
-  //Write command
+  // Write command
   if (LnPacket->px.d1==1)
   {
-    //SV 0 contains the program version (write SV0 == RESET? )
-    if (LnPacket->px.d2>0)
+    // SV0 contains board config (write SV0 == RESET? )
+    // SV100 returns the program VERSION, read only
+    if (LnPacket->px.d2>0 && LnPacket->px.d2!=100)
     {
       //Store data
+      //OPC_PEER_XFER D4 -> New value to write
       svtable.data[LnPacket->px.d2]=LnPacket->px.d4;
       EEPROM.write(LnPacket->px.d2,LnPacket->px.d4);
       
       #ifdef DEBUG
-      Serial.print("ESCRITURA "); Serial.print(LnPacket->px.d2); Serial.print(" <== ");
+      Serial.print("WROTE "); Serial.print(LnPacket->px.d2); Serial.print(" <== ");
       Serial.print(LnPacket->px.d4); Serial.print(" | ");
       Serial.print(LnPacket->px.d4, HEX); Serial.print(" | ");
       Serial.println(LnPacket->px.d4, BIN);
@@ -469,11 +476,11 @@ void sendPeerPacket(uint8_t p0, uint8_t p1, uint8_t p2)
   txPacket.px.d4=0x00;
   txPacket.px.pxct2=0x00;
   txPacket.px.d5=svtable.svt.addr_high; //SOURCE high address
-  txPacket.px.d6=p0;
+  txPacket.px.d6=p0; // date/value from SV
   txPacket.px.d7=p1;
   txPacket.px.d8=p2;
 
-  //Set high bits in right position  
+  //Set high bits in correct position
   bitWrite(txPacket.px.pxct1,0,bitRead(txPacket.px.d1,7));
   bitClear(txPacket.px.d1,7);
   bitWrite(txPacket.px.pxct1,1,bitRead(txPacket.px.d2,7));
