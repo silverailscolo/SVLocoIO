@@ -42,10 +42,10 @@
  * Thanks also to Rocrail group - http://www.rocrail.org
  ------------------------------------------------------------------------
  LAST CHANGES:
- 1/9/2019  - Inform state of all inputs at power on, depends on the define #INFORMATPOWERON
+ 1/9/2019  - Inform state of all inputs at power on, depends on #INFORMATPOWERON
            - Bug fixed on input numbers, they are stored in value1 and value2 different than outputs
  22/1/2025 - Access version as SV100, code documentation
- TODO      - used SV0 config for outputs/inputs eg. blink, INFORMATPOWERON
+ TODO      - use SV0 config for outputs/inputs eg. blink. Done: INFORMATPOWERON
 *************************************************************************/
 
 #include <LocoNet.h>
@@ -54,18 +54,19 @@
 //Uncomment this line to debug through the serial monitor
 #define DEBUG
 //Uncomment this line to do not inform of the inputs state at power on
-#define INFORMATPOWERON // also stored in SV0 bit x
+#define INFORMATPOWERON false
+//fetched from board config SV0 bit 7
 
 #define VERSION 107
 
 namespace {
 //#define VIDA_LOCOSHIELD_NANO 1
 
-//Arduino pin assignment to each of the 16 outputs
+//Arduino pin assignment to each of the 16 output/output ports
 #ifdef VIDA_LOCOSHIELD_NANO
 uint8_t pinMap[16]={11,10,9,6,5,4,3,2,15,14,19,18,17,16,13,12};
 #else
-uint8_t pinMap[16]={2,3,4,5,6,9,10,11,12,13,14,15,16,17,18,19};
+uint8_t pinMap[16]={2,3,4,5,6,9,10,11,12,13,14,15,16,17,18,19}; // GCA51 has just 10 ports + SPI
 #endif
 }
 
@@ -100,7 +101,7 @@ SV_DATA svtable;
 lnMsg *LnPacket;
 
 //Table with addresses of pins already converted, input numbers are stored in a different way than output numbers. ¿BUG?
-uint16_t myAddr[16];
+uint16_t portAddr[16];
   
 void setup()
 {
@@ -122,6 +123,7 @@ void setup()
   //Check for a valid config
   if (svtable.svt.vrsion!=VERSION || svtable.svt.addr_low<1 || svtable.svt.addr_low>240 || svtable.svt.addr_high<1 || svtable.svt.addr_high>100 )
   {
+    //Initialise svtable and EEPROM
     svtable.svt.vrsion=VERSION;
     svtable.svt.addr_low=81;
     svtable.svt.addr_high=1;
@@ -133,22 +135,21 @@ void setup()
   else
   {
     //Configure I/O
+    svtable.data[0] & 0x01 ==0 ? INFORMATPOWERON=false : INFORMATPOWERON=ftrue;
     #ifdef DEBUG
     Serial.println("Initializing pins...");
     #endif 
-    for (n=0;n<16;n++)
+    for (n=0;n<16;n++) // adapt number of pins/ports for application, like GCA51
     {
       inpTimer[n]=0; //timer initialization
       
-
-      
       if (bitRead(svtable.svt.pincfg[n].cnfg,7))
       {
-        myAddr[n]=(svtable.svt.pincfg[n].value2 & B00001111)<<7;
-        myAddr[n]=myAddr[n] | svtable.svt.pincfg[n].value1;
-        myAddr[n]+=1;
+        portAddr[n]=(svtable.svt.pincfg[n].value2 & B00001111)<<7;
+        portAddr[n]=portAddr[n] | svtable.svt.pincfg[n].value1;
+        portAddr[n]+=1;
         #ifdef DEBUG        
-        Serial.print("Pin ");Serial.print(pinMap[n]); Serial.print(" output "); Serial.print(n); Serial.print(" LOGIC "); Serial.print(myAddr[n]); Serial.println(" as OUTPUT");
+        Serial.print("Pin ");Serial.print(pinMap[n]); Serial.print(" output "); Serial.print(n); Serial.print(" LOGIC "); Serial.print(portAddr[n]); Serial.println(" as OUTPUT");
         #endif 
         pinMode(pinMap[n],OUTPUT);
         //IF HIGH at startup AND output type = CONTINUE ...
@@ -159,11 +160,11 @@ void setup()
       }        
       else
       {
-        myAddr[n]=(svtable.svt.pincfg[n].value2 & B00001111)<<7;
-        myAddr[n]=myAddr[n] | (svtable.svt.pincfg[n].value1<<1 | bitRead(svtable.svt.pincfg[n].value2,5));
-        myAddr[n]+=1;
+        portAddr[n]=(svtable.svt.pincfg[n].value2 & B00001111)<<7;
+        portAddr[n]=portAddr[n] | (svtable.svt.pincfg[n].value1<<1 | bitRead(svtable.svt.pincfg[n].value2,5));
+        portAddr[n]+=1;
         #ifdef DEBUG        
-        Serial.print("Pin ");Serial.print(pinMap[n]); Serial.print(" input "); Serial.print(n); Serial.print(" LOGIC "); Serial.print(myAddr[n]); Serial.println(" as INPUT_PULLUP");
+        Serial.print("Pin ");Serial.print(pinMap[n]); Serial.print(" input "); Serial.print(n); Serial.print(" LOGIC "); Serial.print(portAddr[n]); Serial.println(" as INPUT_PULLUP");
         #endif
         pinMode(pinMap[n],INPUT_PULLUP);
         bitWrite(svtable.svt.pincfg[n].value2,4,digitalRead(pinMap[n]));
@@ -207,10 +208,12 @@ void loop()
     }
   }
   
+  // check for additional sensors, like RFID on a GCA51, and report on their portAddress
+  
   // Check inputs to inform 
-  for (n=0; n<16; n++)
+  for (n=0; n<16; n++) // GCA51 has only 10 pins so adjust n<10;
   {
-    if (!bitRead(svtable.svt.pincfg[n].cnfg,7) && myAddr[n]>=1)   
+    if (!bitRead(svtable.svt.pincfg[n].cnfg,7) && portAddr[n]>=1)   
     {
       //Check if state changed 
       currentState=digitalRead(pinMap[n]);
@@ -221,7 +224,7 @@ void loop()
       }
       
       hasChanged=true;
-      //check if is a BLOCK DETECTOR with DELAYED SWITCH OFF (as we use pullup resistor, deactivation is HIGH)
+      //check if port is a BLOCK DETECTOR with DELAYED SWITCH OFF (as we use pullup resistor, deactivation is HIGH)
       if (bitRead(svtable.svt.pincfg[n].cnfg,4)==1 && bitRead(svtable.svt.pincfg[n].cnfg,2)==0 && currentState==HIGH)
       {
         if ((millis()-inpTimer[n])<2000)
@@ -233,7 +236,7 @@ void loop()
         #ifdef DEBUG
         Serial.print("INPUT ");Serial.print(n);
         Serial.print(" IN PIN "); Serial.print(pinMap[n]);
-        Serial.print(" CHANGED, INFORM "); Serial.println(myAddr[n]);
+        Serial.print(" CHANGED, INFORM "); Serial.println(portAddr[n]);
         #endif
         LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2);
         //Update state to detect flank (use bit in value2 of SV)
@@ -258,20 +261,19 @@ void notifyPower( uint8_t State )
   Serial.println( State ? "ON" : "OFF" );
   #endif
 
-  #ifdef INFORMATPOWERON
-  if (State)
+  if (INFORMATPOWERON && State)
   {
     // Check inputs to inform 
     for (n=0; n<16; n++)
     {
-      if (!bitRead(svtable.svt.pincfg[n].cnfg,7) && myAddr[n]>1)   //Setup as an Input greater than 1
+      if (!bitRead(svtable.svt.pincfg[n].cnfg,7) && portAddr[n]>1)   //Setup as an Input greater than 1
       {
         currentState=digitalRead(pinMap[n]);
         
         #ifdef DEBUG
         Serial.print("INPUT ");Serial.print(n);
         Serial.print(" IN PIN "); Serial.print(pinMap[n]);
-        Serial.print(" INFORMED AT POWER: "); Serial.print(myAddr[n]); Serial.print(" = "); Serial.println(!currentState);
+        Serial.print(" INFORMED AT POWER: "); Serial.print(portAddr[n]); Serial.print(" = "); Serial.println(!currentState);
         #endif
         bitWrite(svtable.svt.pincfg[n].value2,4,!currentState);
         LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2);
@@ -280,7 +282,6 @@ void notifyPower( uint8_t State )
       } 
     }
   }
-  #endif
 }
 
 // This call-back function is called from LocoNet.processSwitchSensorMessage
@@ -313,10 +314,10 @@ void notifySwitchRequest( uint16_t Address, uint8_t Output, uint8_t Direction )
   Serial.println(Output ? "On" : "Off");
   #endif
   
-  //Check if the Address is assigned, configured as output and same Direction
+  //Check if the Address is assigned, configured as Output and same Direction
   for (n=0; n<16; n++)
   {
-    if ((myAddr[n] == Address) &&  //Address
+    if ((portAddr[n] == Address) &&  //Address
         (bitRead(svtable.svt.pincfg[n].cnfg,7) == 1))   //Setup as an Output
     {
       #ifdef DEBUG
@@ -431,9 +432,9 @@ boolean processPeerPacket()
   // Write command
   if (LnPacket->px.d1==1)
   {
-    // SV0 contains board config (write SV0 == RESET? )
+    // SV0 contains board config bits, see current LocoIO docs
     // SV100 returns the program VERSION, read only
-    if (LnPacket->px.d2>0 && LnPacket->px.d2!=100)
+    if (LnPacket->px.d2>=0 && LnPacket->px.d2!=100)
     {
       //Store data
       //OPC_PEER_XFER D4 -> New value to write
