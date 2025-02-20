@@ -103,7 +103,17 @@ lnMsg *LnPacket;
 // Table with addresses of pins already converted, input numbers are stored in a different way than output numbers. ¿BUG?
 uint16_t portAddr[16];
 
+uint8_t blinkRate = 0;                 // default board setting for blinking rate of output ports
+uint16_t blinkDuration = 1000;
+unsigned long currentBlinkMillis = 0;  // use the same time for all LED flashes to keep them synchronized
+unsigned long previousBlinkMillis = 0; // last time LED changed state
+uint8_t blinkState[16];
 
+// other board config options
+boolean alternateMode = false;
+boolean portRefresh = false;          // TODO send update of all input states when SV0 is written
+
+/********************** SETUP *************************/
 void setup()
 {
   int n;
@@ -114,7 +124,7 @@ void setup()
   // Configure the serial port for 57600 baud
 #ifdef DEBUG
   Serial.begin(9600);
-  Serial.print("SVLocoIO v."); Serial.println(VERSION);
+  Serial.print("GCA50 LocoIO v."); Serial.println(VERSION);
 #endif
 
   // Load config from EEPROM
@@ -135,6 +145,26 @@ void setup()
   }
   else
   {
+    // load board settings from SV0
+    // from Public_Domain_HDL_LocoIO definition:
+    //    <variable CV="0" mask="VVVVXXXX" item="Blink Rate" default="0"> DONE, see blinkRate
+    //        <label>Blink Rate:</label> 0=slow to 15=fast
+    //    <variable CV="0" mask="XXXVXXXX" item="Board Active High" default="0"> ALWAYS ACTIVE LOW - NO CONFIG
+    //        <tooltip>Default: unselected = Active Low</tooltip>
+    //    <variable CV="0" mask="XXXXVVXX" item="Action Mode" default="0"> NOT USED - ALWAYS 0
+    //    <variable CV="0" mask="XXXXXXVX" item="Alternate Mode" default="0">
+    //        0 = Fixed; 1 = Alternating
+    //        <tooltip>Button sends alternating or fixed code</tooltip>
+    //    <variable CV="0" mask="XXXXXXXV" item="Port Refresh" default="0">
+
+    blinkRate = (svtable.data[0] >> 4);  // actual blinkPeriod was matched to an HDL LocoIO
+    blinkDuration = 1000 - 30 * blinkRate; // use 50% of blinkPeriod. See also FlashTime const
+    Serial.print("Board blink rate: "); Serial.print(blinkRate); Serial.print( " blink period: "); Serial.print(blinkDuration * 2); Serial.println("ms");
+
+    alternateMode = svtable.data[0] & 0x2;
+    portRefresh = svtable.data[0] & 0x1;
+    Serial.println("LocoIO functions compatible to v148/149");
+
     // Configure I/O
 #ifdef DEBUG
     Serial.println("Initializing pins...");
@@ -143,7 +173,7 @@ void setup()
     {
       inpTimer[n] = 0; // timer initialization
 
-      if (bitRead(svtable.svt.pincfg[n].cnfg, 7))
+      if (bitRead(svtable.svt.pincfg[n].cnfg, 7)) // Outputs
       {
         portAddr[n] = (svtable.svt.pincfg[n].value2 & B00001111) << 7;
         portAddr[n] = portAddr[n] | svtable.svt.pincfg[n].value1;
@@ -158,7 +188,7 @@ void setup()
         else
           digitalWrite(pinMap[n], LOW);
       }
-      else
+      else // Inputs
       {
         portAddr[n] = (svtable.svt.pincfg[n].value2 & B00001111) << 7;
         portAddr[n] = portAddr[n] | (svtable.svt.pincfg[n].value1 << 1 | bitRead(svtable.svt.pincfg[n].value2, 5));
@@ -175,12 +205,14 @@ void setup()
   Serial.print("Module "); Serial.print(svtable.svt.addr_low); Serial.print("/"); Serial.println(svtable.svt.addr_high);
 }
 
-
+/************************ MAIN LOOP () *************************/
 void loop()
 {
   int n;
   bool hasChanged;
   int currentState;
+  static unsigned long CurrentTime;                    // time at this moment
+  currentBlinkMillis = millis();                       // capture the latest value of millis()
 
   // Check for any received LocoNet packets
   LnPacket = LocoNet.receive() ;
@@ -208,6 +240,9 @@ void loop()
       processPeerPacket();
     }
   }
+
+  // override pin state for blinking outputs
+  updateBlink(n);
 
   // Check inputs to inform
   for (n = 0; n < 16; n++) // GCA51 has only 10 pins so adjust n<10;
@@ -503,4 +538,56 @@ void sendPeerPacket(uint8_t p0, uint8_t p1, uint8_t p2)
 #ifdef DEBUG
   Serial.println("OPC_PEER_XFER Packet sent!");
 #endif
+}
+
+/*********************************************************************************************************************
+  Purpose:      Handle blink timer if output commanded state is ON. Turn output off if commanded state is OFF.
+  Description : Adapted from GCA51 v150 LocoIO (n=8; n<16) and .cfg bit 4 checked.
+
+  Globals:
+  blinkRate (Board setting) is in range 0 - 15
+  blinkPeriod is in range 2000 ms (@0) - 250 ms (@15)
+  blinkDuration = blinkPeriod/2
+
+  Blink config bit 4:
+  0d144 = 0b10010000
+  0d145 = 0b10010001
+  0d208 = 0b11010000
+  No blink:
+  0d128 = 0b10000000
+  0d129 = 0b10000001
+**********************************************************************************************************************/
+void updateBlink(uint8_t portIdx) {
+
+  if (bitRead(svtable.svt.pincfg[portIdx].cnfg, 4)) // // only blink for cnfg 144/145/208
+  {
+    if (bitRead(svtable.svt.pincfg[portIdx].value2, 4) == HIGH) // only blink when output is ON
+    {
+      if (blinkState[portIdx] == 1)
+      {
+        // if output is currently off, wait for the interval to expire before turning it on
+        if (currentBlinkMillis - previousBlinkMillis >= blinkDuration)
+        { // time is up, so change the state to LOW (on)
+          digitalWrite(pinMap[portIdx - 8], LOW);
+          blinkState[portIdx] = 0;
+          previousBlinkMillis = previousBlinkMillis + blinkDuration; // save the time when we changed to on
+        }
+      }
+      else if (blinkState[portIdx] == 0)
+      {
+        // if output is currently on, wait for the duration to expire before turning it off
+        if (currentBlinkMillis - previousBlinkMillis >= blinkDuration)
+        { // time is up, so change the state to HIGH (off)
+          digitalWrite(pinMap[portIdx - 8], HIGH);
+          blinkState[portIdx] = 1;
+          previousBlinkMillis = previousBlinkMillis + blinkDuration; // save the time when we changed to off
+        }
+      } else {
+        Serial.print("Unexpected updateBlink() for port "); Serial.println(portIdx);
+      }
+    } else { // output commanded state if HIGH (off) so turn off pin
+      digitalWrite(pinMap[portIdx - 8], HIGH);
+      blinkState[portIdx] == 0;
+    }
+  }
 }
