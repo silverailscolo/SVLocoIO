@@ -19,7 +19,7 @@ The code requires GCA50a hardware, available as a PCB or kit from [P. Giling](ht
 - The maximum input port address has been increased to 2048.
 - Inform about the state of the inputs (sensors) at power on.
 When the command station is turned on, or the power on button of your software like Rocrail or JMRI is pressed, the module will send the current state of all ports configured as inputs.
-With a bit more of technical detail, when a OPC_GPON command is sent throuth Loconet, the board responds a OPC_INPUT_REP message for each configured input.
+With a bit more of technical detail, when a OPC_GPON command is sent through LocoNet, the board responds a OPC_INPUT_REP message for each configured input.
 If you want to deactivate this functionality, delete or comment the line in the top of the code:
 ``#define INFORMATPOWERON``
 - Blinking outputs. The blink rate is configurable per board (0-15, that's 2-1 seconds)
