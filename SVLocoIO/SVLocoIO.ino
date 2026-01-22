@@ -1,5 +1,5 @@
 /**************************************************************************
-    LocoIno - Configurable Arduino Loconet Module
+    LocoIno - Configurable Arduino LocoNet Module
     Copyright (C) 2014-2024 Daniel Guisado Serra
     Copyright (C) 2024-2026 EJ Broerse @silverailscolo
 
@@ -18,26 +18,27 @@
 
  ------------------------------------------------------------------------
  AUTHOR : Dani Guisado - http://www.clubncaldes.com - dguisado@gmail.com
+ AUTHOR : Egbert Broerse - https://github.com/silverailscolo - dcc2@ebroerse.nl
  ------------------------------------------------------------------------
  DESCRIPTION:
     This software emulates the functionality of a GCA50 board from Peter
-    Giling (Giling Computer Applications). This is a Loconet Interface
+    Giling (Giling Computer Applications). This is a LocoNet Interface
     with 16 I/O that can be individually configured as Input (block sensors)
     or Outputs (switches, lights,...).
-    Configuration is done through SV Loconet protocol and can be configured
+    Configuration is done through SV LocoNet protocol and can be configured
     from Rocrail (Programming->GCA->GCA50).
  ------------------------------------------------------------------------
  PIN ASSIGNMENT:
-   0,1 -> Serial, used to debug and Loconet Monitor (uncomment DEBUG)
+   0,1 -> Serial, used to debug and LocoNet Monitor (uncomment DEBUG)
    2,3,4,5,6 -> Configurable I/O from 1 to 5
-   7 -> Loconet TX (connected to GCA185 shield)
-   8 -> Loconet RX (connected to GCA185 shield)
+   7 -> LocoNet TX (connected to GCA185 shield)
+   8 -> LocoNet RX (connected to GCA185 shield)
    9,10,11,12,13 -> Configurable I/O from 6 to 10
    A0,A1,A2,A3,A4,A5-> Configurable I/O from 11 to 16
  ------------------------------------------------------------------------
  CREDITS: 
- * Based on MRRwA Loconet libraries for Arduino - http://mrrwa.org/ and 
-   the Loconet Monitor example.
+ * Based on MRRwA LocoNet libraries for Arduino - http://mrrwa.org/ and 
+   the LocoNet Monitor example.
  * Inspired in GCA50 board from Peter Giling - http://www.phgiling.net/
  * Idea also inspired in LocoShield from SPCoast - http://www.scuba.net/
  * Thanks also to Rocrail group - http://www.rocrail.org
