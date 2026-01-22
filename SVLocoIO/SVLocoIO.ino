@@ -109,9 +109,8 @@ typedef union {
 SV_DATA svtable;
 lnMsg *LnPacket;
 
-// Table with addresses of pins already converted, input numbers are stored in a different way than output numbers. ¿BUG?
-uint16_t softwareAddress[16]; // composite software address of all the hardware ports (3-8 not used on GCA51, set to 255)
-
+// Table with addresses of pins already converted, input numbers are stored in a different way than output numbers.
+uint16_t softwareAddress[16]; // composite software address of all the hardware ports
 
 const uint8_t configCodes[16] = {15,23,27,31,91,39,47,55,128,129,136,140,144,145,192,208}; // backup for configOptions lookup, requires more mem
 
@@ -273,7 +272,7 @@ void turnOn()
     {
         if (bitRead(svtable.svt.pincfg[s_port].cnfg, 7))  // only set outputs
         {
-            digitalWrite(pinMap[s_port - 8], HIGH);
+            digitalWrite(pinMap[s_port], HIGH);
             Serial.print(F("Turned on port "));
             Serial.println(s_port);
         }
@@ -302,7 +301,7 @@ void turnOff()
     {
         if (bitRead(svtable.svt.pincfg[s_port].cnfg, 7))  // only set outputs
         {
-            digitalWrite(pinMap[s_port - 8], LOW);
+            digitalWrite(pinMap[s_port], LOW);
             Serial.print(F("Turned off port "));
             Serial.println(s_port);
         }
@@ -608,10 +607,10 @@ void setPortAddress(uint8_t s_port, uint16_t s_port_addr, bool isInput)
 
 void setup()
 {
+  static uint8_t n;
   uint32_t uiStartTimer;
   uint16_t uiElapsedDelay;
   uint16_t uiSerialOKDelay = 5000;
-  uint8_t i, n;
   pinMode (LocoLED, OUTPUT);                    // LocoLED pin to indicate LocoNet communication
 
   // First initialize the LocoNet interface
@@ -625,23 +624,35 @@ void setup()
   #endif 
 
   // Load config from EEPROM
-  for (n = 0; n<51; n++)
-    svtable.data[n] = EEPROM.read(n);
+  svtable.svt.board_cnfg = EEPROM.read(0); // contains board blink rate, etc.
+  svtable.svt.addr_low = EEPROM.read(1);
+  svtable.svt.addr_high = EEPROM.read(2);
+#ifdef DEBUG
+  Serial.println(F("Start reading EEPROM into svtable.data"));
+  for (n = 0; n < 101; n++) {
+    svtable.data[n] = EEPROM.read(n);  // Read the values of SV0 till SV100. The values in EEPROM were OK or standardised in start_setup()
+    Serial.print(n); Serial.print(F(": ")); Serial.println(svtable.data[n]);
+  }
+#endif
 
   // Check for a valid config
   if (svtable.svt.vrsion != VERSION || svtable.svt.addr_low < 1 || svtable.svt.addr_low > 240 || svtable.svt.addr_high < 1 || svtable.svt.addr_high > 100 )
   {
-    svtable.svt.vrsion = VERSION;
-    svtable.svt.addr_low = 81;
-    svtable.svt.addr_high = 1;
-    EEPROM.write(0,VERSION);
+    svtable.data[100] = VERSION;
+    svtable.svt.addr_low = ucBoardAddrLo;
+    svtable.svt.addr_high = ucBoardAddrHi;
+    EEPROM.write(0, 0); // HDL LocoIO compatible board config (stores: refresh at power on, blink rate, etc.)
     EEPROM.write(1, svtable.svt.addr_low);
     EEPROM.write(2, svtable.svt.addr_high);
+    EEPROM.write(99, 0); // init JMRI LocoIO decoder storage of o-bits
+    EEPROM.write(100, VERSION); // HDL LocoIO compatible SV100, readOnly from LocoNet
+    // ReadCV returns offset x, x+1 and x+2 so we simulate returned values in processPeerPacket()
+
+    Serial.println(F("Version mismatch; EEPROM was reset to defaults."));
   }
   else
   {
     // Configure I/O
-
     CalculateAddress(); // Calculate software addresses of pins and store in global variable softwareAddress[16]. Prints config to Console
 
     // load board settings from SV0
@@ -667,7 +678,7 @@ void setup()
 
     // Configure I/O pins and give outputs a start value
 #ifdef DEBUG
-    Serial.println("Initializing pins...");
+    Serial.println(F("Initializing pins..."));
 #endif 
     for (n = 0; n < 16; n++)
     {
@@ -679,22 +690,22 @@ void setup()
         softwareAddress[n] = softwareAddress[n] | svtable.svt.pincfg[n].value1;
         softwareAddress[n] += 1;
         #ifdef DEBUG        
-        Serial.print("Pin "); Serial.print(pinMap[n]); Serial.print(" output "); Serial.print(n); Serial.print(" LOGIC "); Serial.print(softwareAddress[n]); Serial.println(" as OUTPUT");
+        Serial.print(F("Pin ")); Serial.print(pinMap[n]); Serial.print(F(" output ")); Serial.print(n); Serial.print(F(" LOGIC ")); Serial.print(softwareAddress[n]); Serial.println(F(" as OUTPUT"));
         #endif 
         pinMode(pinMap[n],OUTPUT);
         // IF HIGH at startup AND output type = CONTINUE ...
-        if (bitRead(svtable.svt.pincfg[n].cnfg,0) == 0 && bitRead(svtable.svt.pincfg[n].cnfg,3) == 0)
+        if (bitRead(svtable.svt.pincfg[n].cnfg, 0) == 0 && bitRead(svtable.svt.pincfg[n].cnfg, 3) == 0)
           digitalWrite(pinMap[n],HIGH);
         else
           digitalWrite(pinMap[n],LOW);  
       }        
-      else
+      else  // Output
       {
         softwareAddress[n] = (svtable.svt.pincfg[n].value2 & B00001111) << 7;
         softwareAddress[n] = softwareAddress[n] | (svtable.svt.pincfg[n].value1 << 1 | bitRead(svtable.svt.pincfg[n].value2,5));
         softwareAddress[n] += 1;
         #ifdef DEBUG        
-        Serial.print("Pin "); Serial.print(pinMap[n]); Serial.print(" input "); Serial.print(n); Serial.print(" LOGIC "); Serial.print(softwareAddress[n]); Serial.println(" as INPUT_PULLUP");
+        Serial.print(F("Pin ")); Serial.print(pinMap[n]); Serial.print(F(" input ")); Serial.print(n); Serial.print(F(" LOGIC ")); Serial.print(softwareAddress[n]); Serial.println(F(" as INPUT_PULLUP"));
         #endif
         pinMode(pinMap[n],INPUT_PULLUP);
         bitWrite(svtable.svt.pincfg[n].value2,4,digitalRead(pinMap[n]));
@@ -720,33 +731,38 @@ void setup()
 } // end of setup()
 
 void loop()
-{  
-  int n;
+{
+  static uint8_t n;
   bool hasChanged;
   int currentState;
-  
+  static unsigned long IO_timing[8];                   // array[8] with Pulse- or Debounce timing for each IO-port
+  currentBlinkMillis = millis();                       // capture the latest value of millis()
+  static byte remember_input[8];                       // remembers which input was active.  After "waittime" the program will reset this input(s)
+
+  LocoNet_communication(0);                      // turn off LocoLED when the wait time has expired
+
+
   // Check for any received LocoNet packets
   LnPacket = LocoNet.receive();
   if (LnPacket)
   {
     #ifdef DEBUG 
     // First print out the packet in HEX
-    Serial.print("RX: ");
+    Serial.print(F("RX: "));
     uint8_t msgLen = getLnMsgSize(LnPacket); 
     for (uint8_t x = 0; x < msgLen; x++)
     {
       uint8_t val = LnPacket->data[x];
       // Print a leading 0 if less than 16 to make 2 HEX digits
-      if(val < 16)
-        Serial.print('0');        
+      if (val < 16) Serial.print(F("0"));
       Serial.print(val, HEX);
-      Serial.print(' ');
+      Serial.print(F(" "));
     }
     Serial.println();
     #endif  
 
     // If this packet was not a Switch or Sensor Message, check for PEER packet
-    if(!LocoNet.processSwitchSensorMessage(LnPacket))
+    if (!LocoNet.processSwitchSensorMessage(LnPacket))
     {             
       processPeerPacket();
     }
@@ -766,9 +782,11 @@ void loop()
     TODO switch point feedback contact1/contact 2, alternating code for bush buttons (board config)
   */
 
-  for (n = 0; n<16; n++)
+  for (n = 0; n < 16; n++)
   {
-    if (!bitRead(svtable.svt.pincfg[n].cnfg,7) && softwareAddress[n] >= 1)
+    updateBlink(n);
+
+    if (!bitRead(svtable.svt.pincfg[n].cnfg, 7) && softwareAddress[n] >= 1)  // port is an input
     {
       // Check if state changed 
       currentState = digitalRead(pinMap[n]);
@@ -780,22 +798,23 @@ void loop()
       
       hasChanged = true;
       // Check if is a BLOCK DETECTOR with DELAYED SWITCH OFF (as we use pullup resistor, deactivation is HIGH)
-      if (bitRead(svtable.svt.pincfg[n].cnfg,4) == 1 && bitRead(svtable.svt.pincfg[n].cnfg,2) == 0 && currentState == HIGH)
+      if (bitRead(svtable.svt.pincfg[n].cnfg, 4) == 1 && bitRead(svtable.svt.pincfg[n].cnfg, 2) == 0 && currentState == HIGH)
       {
-        if ((millis()-inpTimer[n]) < 2000)
+        if ((millis() - inpTimer[n]) < 2000)
           hasChanged = false;
       }
 
       if (hasChanged)
       {
+        LocoNet_communication(1);                                                        // turn on LocoLED
         #ifdef DEBUG
-        Serial.print("INPUT "); Serial.print(n);
-        Serial.print(" IN PIN "); Serial.print(pinMap[n]);
-        Serial.print(" CHANGED, INFORM "); Serial.println(softwareAddress[n]);
+        Serial.print(F("INPUT ")); Serial.print(n);
+        Serial.print(F(" IN PIN ")); Serial.print(pinMap[n]);
+        Serial.print(F(" CHANGED, INFORM ")); Serial.println(softwareAddress[n]);
         #endif
         LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2);
         // Update state to detect flank (use bit in value2 of SV)
-        bitWrite(svtable.svt.pincfg[n].value2,4,currentState);
+        bitWrite(svtable.svt.pincfg[n].value2, 4, currentState);
       }
       
     }
@@ -818,26 +837,26 @@ void notifySwitchRequest( uint16_t Address, uint8_t Output, uint8_t Direction )
   Direction ? Direction = 1 : Direction = 0;
   
   #ifdef DEBUG
-  Serial.print("Switch Request: ");
+  Serial.print(F("Switch Request: "));
   Serial.print(Address, DEC);
-  Serial.print(':');
+  Serial.print(F(":"));
   Serial.print(Direction ? "Closed" : "Thrown");
-  Serial.print(" - ");
+  Serial.print(F(" - "));
   Serial.println(Output ? "On" : "Off");
   #endif
   
   // Check if the Address is assigned, configured as output and same Direction
-  for (n = 0; n<16; n++)
+  for (n = 0; n < 16; n++)
   {
     if ((softwareAddress[n] == Address) &&   // Address
         (bitRead(svtable.svt.pincfg[n].cnfg,7) == 1))   // Setup as an Output
     {
       #ifdef DEBUG
-      Serial.print("Output assigned to port ");
-      Serial.print(n+1); Serial.print(" and pin "); Serial.println(pinMap[n]);
+      Serial.print(F("Output assigned to port "));
+      Serial.print(n + 1); Serial.print(F(" and pin ")); Serial.println(pinMap[n]);
       #endif
       // If pulse (always hardware reset) and Direction, only listen ON message
-      if (bitRead(svtable.svt.pincfg[n].cnfg,3) == 1 && bitRead(svtable.svt.pincfg[n].value2,5) == Direction && Output)
+      if (bitRead(svtable.svt.pincfg[n].cnfg, 3) == 1 && bitRead(svtable.svt.pincfg[n].value2, 5) == Direction && Output)
       {
         digitalWrite(pinMap[n], HIGH);
         delay(150);
@@ -845,7 +864,7 @@ void notifySwitchRequest( uint16_t Address, uint8_t Output, uint8_t Direction )
         break;
       }
       // If continue and hardware reset and Direction
-      else if (bitRead(svtable.svt.pincfg[n].cnfg,3) == 0 && bitRead(svtable.svt.pincfg[n].cnfg,2) == 1 && bitRead(svtable.svt.pincfg[n].value2,5) == Direction)
+      else if (bitRead(svtable.svt.pincfg[n].cnfg, 3) == 0 && bitRead(svtable.svt.pincfg[n].cnfg, 2) == 1 && bitRead(svtable.svt.pincfg[n].value2, 5) == Direction)
       {
         if (Output)
           digitalWrite(pinMap[n], HIGH);
@@ -855,7 +874,7 @@ void notifySwitchRequest( uint16_t Address, uint8_t Output, uint8_t Direction )
       }
       // If continue and software reset, one Direction ON turns on and other Direction ON turns off
       // OFF messages are not listened
-      else if (bitRead(svtable.svt.pincfg[n].cnfg,3) == 0 && bitRead(svtable.svt.pincfg[n].cnfg,2) == 0 && Output)
+      else if (bitRead(svtable.svt.pincfg[n].cnfg, 3) == 0 && bitRead(svtable.svt.pincfg[n].cnfg, 2) == 0 && Output)
       {
         if (!Direction)
           digitalWrite(pinMap[n], HIGH);
