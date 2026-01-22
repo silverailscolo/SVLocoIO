@@ -1,5 +1,5 @@
 /**************************************************************************
-    LocoIno - Configurable Arduino LocoNet Module - some parts used in GCA51
+    LocoIno a.k.a. GCA50a - Configurable Arduino LocoNet Module - some parts used in GCA51
     Copyright (C) 2014-2024 Daniel Guisado Serra
     Copyright (C) 2024-2026 EJ Broerse @silverailscolo
 
