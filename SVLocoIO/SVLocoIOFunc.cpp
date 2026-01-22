@@ -20,28 +20,8 @@
  AUTHOR : Dani Guisado - http://www.clubncaldes.com - dguisado@gmail.com
  ------------------------------------------------------------------------
  DESCRIPTION:
-    This software emulates the functionality of a GCA50 board from Peter
-    Giling (Giling Computer Applications). This is a LocoNet Interface
-    with 16 I/O that can be individually configured as Input (block sensors)
-    or Outputs (switches, lights,...).
-    Configuration is done through SV LocoNet protocol and can be configured
-    from Rocrail (Programming->GCA->GCA50).
- ------------------------------------------------------------------------
- CREDITS:
- * Based on MRRwA LocoNet libraries for Arduino - http://mrrwa.org/ and
-   the LocoNet Monitor example.
- * Inspired in GCA50 board from Peter Giling - http://www.phgiling.net/
- * Idea also inspired in LocoShield from SPCoast - http://www.scuba.net/
- * Thanks also to Rocrail group - http://www.rocrail.org
- ------------------------------------------------------------------------
- LAST CHANGES:
- 1/9/2019 - Inform state of all inputs at power on, depends on the define #INFORMATPOWERON
-          - Bug fixed on input numbers, they are stored in value1 and value2 different than outputs
+    GCA50a Library of _identical_ common functions with GCA51.
 *************************************************************************/
-
-#ifndef LOCOGCA50_H_
-  #define LOCOGCA50_H_
-#endif
 
 #include <LocoNet.h>
 #include <EEPROM.h>
@@ -70,9 +50,9 @@ void notifyPower( [[maybe_unused]] uint8_t State )
     // Check inputs to inform
     for (int n=0; n<16; n++)
     {
-      if (!bitRead(svtable.svt.pincfg[n].cnfg,7) && software_address[n]>1) // Setup as an Input greater than 1
+      if (!bitRead(svtable.svt.pincfg[n].cnfg,7) && software_address[n]>1) // Setup as an Input, address > 1
       {
-        int currentState=digitalRead(pinMap[n]);
+        int currentState = digitalRead(pinMap[n]);
 
         #ifdef DEBUG
         Serial.print("INPUT ");Serial.print(n);
@@ -82,7 +62,7 @@ void notifyPower( [[maybe_unused]] uint8_t State )
         bitWrite(svtable.svt.pincfg[n].value2,4,!currentState);
         LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2);
         // Update stored state to detect flank (use bit in value2 of SV)
-        bitWrite(svtable.svt.pincfg[n].value2,4,currentState);
+        bitWrite(svtable.svt.pincfg[n].value2, 4, currentState);
       }
     }
   }
@@ -98,9 +78,9 @@ void notifyPower( [[maybe_unused]] uint8_t State )
 void notifySensor( [[maybe_unused]] uint16_t Address, [[maybe_unused]] uint8_t State )
 {
   #ifdef DEBUG
-  Serial.print("Sensor: ");
+  Serial.print(F("Sensor: "));
   Serial.print(Address, DEC);
-  Serial.print(" - ");
+  Serial.print(F(" - "));
   Serial.println( State ? "Active" : "Inactive" );
   #endif
 }
@@ -113,28 +93,28 @@ void notifySensor( [[maybe_unused]] uint16_t Address, [[maybe_unused]] uint8_t S
 **********************************************************************************************************************/
 void notifySwitchReport( [[maybe_unused]] uint16_t Address, [[maybe_unused]] uint8_t Output, [[maybe_unused]] uint8_t Direction )
 {
-  #ifdef DEBUG
-  Serial.print("Switch Report: ");
+#ifdef DEBUG
+  Serial.print(F("Switch Report: "));
   Serial.print(Address, DEC);
-  Serial.print(':');
+  Serial.print(F(':'));
   Serial.print(Direction ? "Closed" : "Thrown");
-  Serial.print(" - ");
+  Serial.print(F(" - "));
   Serial.println(Output ? "On" : "Off");
-  #endif
+#endif
 }
 
-  // This call-back function is called from LocoNet.processSwitchSensorMessage
-  // for all Switch State messages
+// This call-back function is called from LocoNet.processSwitchSensorMessage
+// for all Switch State messages
 void notifySwitchState( [[maybe_unused]] uint16_t Address, [[maybe_unused]] uint8_t Output, [[maybe_unused]] uint8_t Direction )
 {
-  #ifdef DEBUG
-  Serial.print("Switch State: ");
+#ifdef DEBUG
+  Serial.print(F("Switch State: "));
   Serial.print(Address, DEC);
-  Serial.print(':');
+  Serial.print(F(':'));
   Serial.print(Direction ? "Closed" : "Thrown");
-  Serial.print(" - ");
+  Serial.print(F(" - "));
   Serial.println(Output ? "On" : "Off");
-  #endif
+#endif
 }
 
 /*********************************************************************************************************************
@@ -142,37 +122,3 @@ void notifySwitchState( [[maybe_unused]] uint16_t Address, [[maybe_unused]] uint
 * Description :
 **********************************************************************************************************************/
 // TODO
-
-
-///*
-// * Function to decode a received LocoNet message and optionally change the board & sensor addresses
-// */
-//void lnDecodeMessage(lnMsg *LnPacket)
-//{
-//    uint8_t msgLen = getLnMsgSize(LnPacket);
-//
-//    // Change the board & sensor addresses.
-//    if(msgLen == 0x10){  //XFERmessage, check if it is for me. Used to change the addresses
-//      if((LnPacket->data[3] == ucBoardAddrLo) || (LnPacket->data[3] == 0)){ //my low address or query
-//        if((LnPacket->data[4] == ucBoardAddrHi) || (LnPacket->data[4] == 0x7F)){ ////my high address or query
-//           //svStatus = sv.processMessage(LnPacket);
-//
-//           processXferMess(LnPacket, &SendPacket);
-//
-//           /*5 sec timeout.*/
-//           LN_STATUS lnSent = LocoNet.send( &SendPacket, LN_BACKOFF_MAX - (ucBoardAddrLo % 10) );   //trying to differentiate the ln answer time
-//
-//          // Rocrail compatible addressing
-//          for (uint8_t i = 0; i < NR_OF_RFID_PORTS; i++) {
-//            calcSenAddr(i);
-//
-//#ifdef _SER_DEBUG
-//            if (bSerialOk) {
-//              printSensorData(i);
-//            }
-//#endif
-//    }//for(uint8_t i
-//        } //if(LnPacket->data[4]
-//      } //if(LnPacket->data[3]
-//    } //if(msgLen == 0x10)
-//}
