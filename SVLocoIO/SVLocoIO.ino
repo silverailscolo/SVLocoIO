@@ -1,6 +1,6 @@
 /**************************************************************************
-    LocoIno a.k.a. GCA50a - Configurable Arduino LocoNet Module on Arduino Nano
-    Copyright (C) 2014-2024 Daniel Guisado Serra
+    SVLocoIO a.k.a. GCA50a - Configurable Arduino LocoNet Module on Arduino Nano
+    Copyright (C) 2014-2019 Daniel Guisado Serra
     Copyright (C) 2024-2026 EJ Broerse @silverailscolo
 
     This program is free software: you can redistribute it and/or modify
@@ -18,11 +18,11 @@
 
  ------------------------------------------------------------------------
  AUTHOR : Dani Guisado - http://www.clubncaldes.com - dguisado@gmail.com
- AUTHOR : Egbert Broerse - https://github.com/silverailscolo - dcc2@ebroerse.nl
+ AUTHOR : Egbert Broerse - https://github.com/silverailscolo
  ------------------------------------------------------------------------
  DESCRIPTION:
-    This is a LocoNet Interface with 16 I/O that can be individually
-    configured as Input (block sensors) or Outputs (switches, lights,...).
+    SVLocoIO is a LocoNet Interface with 16 I/O that can be individually
+    configured as Inputs (block sensors) or Outputs (switches, lights,...).
     The "heart" of the GCA51 is an Arduino Nano plugged into the PCB.
     This software emulates the functionality of a GCA50 module from Peter
     Giling, plus additional options from Hans Deloofs LocoIO v148, which was
@@ -43,12 +43,12 @@
  * Based on MRRwA LocoNet libraries for Arduino - http://mrrwa.org/ and 
    the LocoNet Monitor example.
  * Inspired on the GCA50 board from Peter Giling - http://www.phgiling.net/
- * Idea also inspired by LocoShield from SPCoast - http://www.scuba.net/
+ * Also inspired by Lthe ocoShield from SPCoast - http://www.scuba.net/
  * Thanks also to Rocrail group - http://www.rocrail.org
  ------------------------------------------------------------------------
  LAST CHANGES:
- 22/1/2026 Added configuration options as in LocoIO 1.18 (flashing rate/
- outputs)
+ 22/1/2026 Added board configuration options as LocoIO 1.48 (flashing rate/
+ flashing outputs)
  22/1/2026 Added config over Serial Commands
  22/1/2026 Store version in SV100, board config in SV0
 *************************************************************************/
@@ -70,13 +70,16 @@
 #define WaitTime      500                      // Wait Time for all block Inputs in msec.
 #define FlashTime     250                      // Frequency of flasher - TODO board config SV0 bit x
 
+//#define ELEMENTCOUNT(x) (sizeof(x) / sizeof(int)) // (sizeof(x[0]) / sizeof(int)  // function for cnfg lookup
+
+boolean bSerialOk = false;
 uint8_t ucBoardAddrHi = 1;                     // board address high; default 1
 uint8_t ucBoardAddrLo = 88;                    // board address low; default 88
 
 namespace {
 //#define VIDA_LOCOSHIELD_NANO 1
 
-// Arduino pin assignment to each of the 16 LocoIO outputs
+// Arduino pin assignment to each of the 16 LocoIO ports
 #ifdef VIDA_LOCOSHIELD_NANO
 uint8_t pinMap[16] = {11,10,9,6,5,4,3,2,15,14,19,18,17,16,13,12};
 #else
@@ -95,7 +98,7 @@ typedef struct
 // Memory map exchanged with SV read and write commands ( http://wiki.rocrail.net/doku.php?id=lnsv-en )
 typedef struct
 {
-  uint8_t vrsion;
+  uint8_t board_cnfg;
   uint8_t addr_low;
   uint8_t addr_high;
   PIN_CFG pincfg[16];
@@ -618,26 +621,34 @@ void setup()
   LocoNet.init(LN_TX_PIN); // Use explicit naming of the Tx Pin to avoid confusion
 
   // Configure the serial port for 57600 baud
-  #ifdef DEBUG
+#ifdef DEBUG
   Serial.begin(9600);
 
   Serial.print(F("SVLocoIO v.")); Serial.println(VERSION);
-  #endif 
+
+  if (Serial) { // serial interface OK
+    bSerialOk = true;
+    Serial.println(F("************************************************"));
+  }
+#endif
 
   // Load config from EEPROM
   svtable.svt.board_cnfg = EEPROM.read(0); // contains board blink rate, etc.
   svtable.svt.addr_low = EEPROM.read(1);
   svtable.svt.addr_high = EEPROM.read(2);
+
 #ifdef DEBUG
   Serial.println(F("Start reading EEPROM into svtable.data"));
+#endif
   for (n = 0; n < 101; n++) {
     svtable.data[n] = EEPROM.read(n);  // Read the values of SV0 till SV100. The values in EEPROM were OK or standardised in start_setup()
+#ifdef DEBUG
     Serial.print(n); Serial.print(F(": ")); Serial.println(svtable.data[n]);
-  }
 #endif
+  }
 
   // Check for a valid config
-  if (svtable.svt.vrsion != VERSION || svtable.svt.addr_low < 1 || svtable.svt.addr_low > 240 || svtable.svt.addr_high < 1 || svtable.svt.addr_high > 100 )
+  if (svtable.data[100] != VERSION || svtable.svt.addr_low < 1 || svtable.svt.addr_low > 240 || svtable.svt.addr_high < 1 || svtable.svt.addr_high > 100 )
   {
     svtable.data[100] = VERSION;
     svtable.svt.addr_low = ucBoardAddrLo;
@@ -670,7 +681,9 @@ void setup()
 
     blinkRate = (svtable.data[0] >> 4);  // actual blinkPeriod was matched to an HDL LocoIO
     blinkDuration = 1000 - 30 * blinkRate; // use 50% of blinkPeriod. See also FlashTime const
+#ifdef DEBUG
     Serial.print(F("Board blink rate: ")); Serial.print(blinkRate); Serial.print( ". blink period: "); Serial.print(blinkDuration * 2); Serial.println(F(" ms"));
+#endif
 
     alternateMode = svtable.data[0] & 0x2;
     portRefresh = svtable.data[0] & 0x1;
