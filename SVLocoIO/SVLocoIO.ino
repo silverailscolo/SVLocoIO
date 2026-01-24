@@ -53,6 +53,7 @@
  22/1/2026 Store version in SV100, board config in SV0
 *************************************************************************/
 
+#include <Arduino.h>
 #include <LocoNet.h>
 #include <EEPROM.h>
 #include <SerialCommand.h>
@@ -348,9 +349,9 @@ void portAddress()
   arg = SCmd.next();
   if (arg != NULL)
   {
-    if (0 < arg <= 2048)
+    s_port_addr = atol(arg);  // convert char string to int
+    if (0 < s_port_addr <= 2048)
     {
-      s_port_addr = atol(arg);  // convert char string to int
       setPortAddress(s_port, s_port_addr, ((svtable.svt.pincfg[s_port].cnfg & 0x80) == 0));
       Serial.print(F("New address set for "));
     }
@@ -607,7 +608,7 @@ void setPortAddress(uint8_t s_port, uint16_t s_port_addr, bool isInput)
 
 void setup()
 {
-  static uint8_t n;
+  uint8_t n;
   uint32_t uiStartTimer;
   uint16_t uiElapsedDelay;
   uint16_t uiSerialOKDelay = 5000;
@@ -692,12 +693,12 @@ void setup()
         #ifdef DEBUG        
         Serial.print(F("Pin ")); Serial.print(pinMap[n]); Serial.print(F(" output ")); Serial.print(n); Serial.print(F(" LOGIC ")); Serial.print(softwareAddress[n]); Serial.println(F(" as OUTPUT"));
         #endif 
-        pinMode(pinMap[n],OUTPUT);
+        pinMode(pinMap[n], OUTPUT);
         // IF HIGH at startup AND output type = CONTINUE ...
         if (bitRead(svtable.svt.pincfg[n].cnfg, 0) == 0 && bitRead(svtable.svt.pincfg[n].cnfg, 3) == 0)
-          digitalWrite(pinMap[n],HIGH);
+          digitalWrite(pinMap[n], HIGH);
         else
-          digitalWrite(pinMap[n],LOW);  
+          digitalWrite(pinMap[n], LOW);
       }        
       else  // Output
       {
@@ -732,7 +733,7 @@ void setup()
 
 void loop()
 {
-  static uint8_t n;
+  uint8_t n;
   bool hasChanged;
   int currentState;
   static unsigned long IO_timing[8];                   // array[8] with Pulse- or Debounce timing for each IO-port
