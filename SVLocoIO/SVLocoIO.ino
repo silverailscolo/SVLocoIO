@@ -214,7 +214,7 @@ void CalculateAddress()
 
         softwareAddress[n] = (((svtable.svt.pincfg[n].value2 & 0x0F) << 8 ) + (svtable.svt.pincfg[n].value1 << 1 ) + odd_even); // Calculate software address of port. For Port 1 .value1 == SV4 and .value2 == SV5
         // (SV5 & 0x0F) << 8 == high byte + SV4 << 1 == low byte + odd_even == software-address of the hardware-port
-        Serial.print(F("- Port ")); Serial.print(n); Serial.print(F(" [H")); Serial.print (n - 7); Serial.print(F("] input, address: ")); Serial.print(softwareAddress[n], DEC);
+        Serial.print(F("- Port ")); Serial.print(n); Serial.print(F(" [H")); Serial.print (n); Serial.print(F("] input, address: ")); Serial.print(softwareAddress[n], DEC);
         Serial.print(F(" (cfg: "));
         Serial.print(svtable.svt.pincfg[n].cnfg);
         // Serial.print(F(" "));
@@ -225,7 +225,7 @@ void CalculateAddress()
       {
         softwareAddress[n] = (((svtable.svt.pincfg[n].value2 & 0x0F) << 8 ) + (svtable.svt.pincfg[n].value1) + 1);
         // Calculate software address of the port. E.g. for Port 1 .value1 == SV4 and .value2 == SV5
-        Serial.print ("- Port "); Serial.print (n); Serial.print (" [H"); Serial.print(n - 7); Serial.print(F("] output, address: ")); Serial.print(softwareAddress[n], DEC);
+        Serial.print ("- Port "); Serial.print (n); Serial.print (" [H"); Serial.print(n); Serial.print(F("] output, address: ")); Serial.print(softwareAddress[n], DEC);
         Serial.print(F(" (cfg: "));
         Serial.print(svtable.svt.pincfg[n].cnfg);
         // Serial.print(F(" "));
@@ -272,7 +272,7 @@ void turnOn()
   if (arg != NULL)      // As long as it exists, take it
   {
     s_port = atoi(arg);  // convert char string to int
-    if (s_port > 7 && s_port < 16)
+    if (s_port >= 0 && s_port < 16)
     {
         if (bitRead(svtable.svt.pincfg[s_port].cnfg, 7))  // only set outputs
         {
@@ -301,7 +301,7 @@ void turnOff()
   if (arg != NULL)      // As long as it exists, take it
   {
     s_port = atoi(arg);  // convert char string to int
-    if (s_port > 7 && s_port < 16)
+    if (s_port >= 0 && s_port < 16)
     {
         if (bitRead(svtable.svt.pincfg[s_port].cnfg, 7))  // only set outputs
         {
@@ -316,7 +316,7 @@ void turnOff()
         }
     }
     else {
-        Serial.print(F("Enter a port number from 8 to 15"));
+        Serial.print(F("Enter a port number from 0 to 15"));
     }
   }
   else {
@@ -336,13 +336,6 @@ void portAddress()
   if (arg != NULL)
   {
     s_port = atoi(arg);  // convert char string to int
-    if (s_port > 1 && s_port < 8)
-    {
-      Serial.print(F("Port "));
-      Serial.print(s_port);
-      Serial.println(F(" address: N/A"));
-      return;
-    }
   }
   else {
     Serial.println(F("Enter a port number (0-1, 8-15)"));
@@ -383,23 +376,9 @@ void portFunction()
   if (arg != NULL)
   {
     s_port = atoi(arg);  // convert char string to int
-    if (s_port < 2)
-    {
-      Serial.print(F("Port "));
-      Serial.print(s_port);
-      Serial.println(F(" function is fixed (RFID) and can't be set"));
-      return;
-    }
-    if (s_port < 8)
-    {
-      Serial.print(F("Port "));
-      Serial.print(s_port);
-      Serial.println(F(" function: N/A"));
-      return;
-    }
   }
   else {
-    Serial.println(F("Enter a port number (8-15)"));
+    Serial.println(F("Enter a port number (0-15)"));
     return;
   }
 
@@ -442,15 +421,9 @@ void portReset()
   if (arg != NULL)
   {
     s_port = atoi(arg);  // convert char string to int
-    if (s_port < 8)
-    {
-      Serial.print(F("Cannot reset Port "));
-      Serial.println(s_port);
-      return;
-    }
   }
   else {
-    Serial.println(F("Enter a port number (8-15)"));
+    Serial.println(F("Enter a port number (0-15)"));
     return;
   }
 
@@ -479,7 +452,7 @@ void portReset()
 void moduleAddress()
 {
   uint8_t s_board_lo;
-  uint8_t s_board_hi = 1;  // hi board address always 1 on GCA51
+  uint8_t s_board_hi;
   char *arg;
 
   // Serial.println(F("Run moduleAddress()"));
@@ -491,32 +464,30 @@ void moduleAddress()
     {
       Serial.print(F("Invalid board low address: "));
       Serial.println(s_board_lo);
-      Serial.println(F("Enter a value between 1 and 255, excluding 88."));
+      Serial.println(F("Enter a value between 1 and 255, excluding 80."));
       return;
     }
 
-    //    arg = SCmd.next();  // for LocoIO GCA50a
-    //    if (arg != NULL)
-    //    {
-    //      s_board_hi = atoi(arg);  // convert char string to int
-    //      if (s_board_hi > 255 || s_board_hi < 1)
-    //      {
-    //        Serial.print(F("Invalid board high address: "));
-    //        Serial.println(s_board_hi);
-    //        Serial.println(F("Enter a value between 1 and 255 (default: 1)."));
-    //        return;
-    //      }
-    // indent next block and add } for GCA50a variable board high address
+    arg = SCmd.next();  // mod hi address, only for LocoIO GCA50a
+    if (arg == NULL) s_board_hi = 1;
+    else s_board_hi = atoi(arg);  // convert char string to int
+    
+    if (s_board_hi > 255 || s_board_hi < 1)
+    {
+      Serial.print(F("Invalid board high address: "));
+      Serial.println(s_board_hi);
+      Serial.println(F("Enter a value between 1 and 255 (default: 1)."));
+      return;
+    }
 
     // Set address in global vars
     svtable.svt.addr_low = s_board_lo;
     svtable.svt.addr_high = s_board_hi;
     // set in EEPROM for persistence
     EEPROM.write(1, s_board_lo);
-    EEPROM.write(2, 1);
+    EEPROM.write(2, s_board_hi);
 
     Serial.println(F("New board address set."));
-//    }
   }
 
   // print values
@@ -564,13 +535,13 @@ void serialHelp()
   Serial.println(F("==="));
   Serial.println(F("H+Enter: Display this command help"));
   Serial.println(F("MA+Enter: Display module board low/high address"));
+  Serial.println(F("MA 82 1+Enter: Set module board address to 82/1"));
   Serial.println(F("MB 6+Enter: Set module blink rate to 6"));
   Serial.println(F("MB+Enter: Display module blink rate"));
-  Serial.println(F("MA 82+Enter: Set module board address to 82/1"));
   Serial.println(F("P 2+Enter: Display software address of port 2"));
   Serial.println(F("P 2 100+Enter: Set software address of port 2 to 100"));
   Serial.println(F("F 2+Enter: Display function of port 2 (code)"));
-  Serial.println(F("F 2 128+Enter: Set function of port 2 to 128 =output Off (valid codes: from 15 up to 208)"));
+  Serial.println(F("F 2 128+Enter: Set function of port 2 to 128 =output Off (checks for valid codes: from 15 up to 208)"));
   Serial.println(F("Z 2+Enter: Factory Reset port 2 (address and function)"));
   Serial.println(F("==="));
 }
@@ -658,8 +629,24 @@ void setup()
     EEPROM.write(2, svtable.svt.addr_high);
     EEPROM.write(99, 0); // init JMRI LocoIO decoder storage of o-bits
     EEPROM.write(100, VERSION); // HDL LocoIO compatible SV100, readOnly from LocoNet
-    // ReadCV returns offset x, x+1 and x+2 so we simulate returned values in processPeerPacket()
+    // ReadCV returns offset x, x+1 and x+2 so we simulate returned values in processPeerPacket() for SV > 98
 
+    // reset ports
+    uint16_t s_port_func = 128;  // default: output, default off
+    for (n = 0; n < 16; n++) {
+      setPortAddress(n, n, false);
+      // set function in global vars
+      svtable.svt.pincfg[n].cnfg = s_port_func;
+      svtable.data[3 * (n + 1)] = s_port_func;
+      // set in EEPROM for persistence
+      EEPROM.write(3 * (n + 1), s_port_func);
+    }
+
+    // write 0 to remaining svtable.data & EEPROM 51 - 98
+    for (n = 51; n < 99; n++) {
+      svtable.data[n] = 0;
+      EEPROM.write(n, 0);
+    }
     Serial.println(F("Version mismatch; EEPROM was reset to defaults."));
   }
   else
@@ -700,7 +687,7 @@ void setup()
 
       if (bitRead(svtable.svt.pincfg[n].cnfg, 7))  // Input
       {
-        softwareAddress[n] = (svtable.svt.pincfg[n].value2 & B00001111)<<7;
+        softwareAddress[n] = (svtable.svt.pincfg[n].value2 & B00001111) << 7;
         softwareAddress[n] = softwareAddress[n] | svtable.svt.pincfg[n].value1;
         softwareAddress[n] += 1;
         #ifdef DEBUG        
@@ -733,7 +720,7 @@ void setup()
   // Setup callbacks for SerialCommand commands
   SCmd.addCommand("ON",turnOn);          // No arg. turns on ESP onboard LED/Two num args. turns output on
   SCmd.addCommand("OFF",turnOff);        // No arg. turns off ESP onboard LED/Two num args. turns output off
-  SCmd.addCommand("MA",moduleAddress);   // No arg. Reads/One num args. sets module address and echos new setting
+  SCmd.addCommand("MA",moduleAddress);   // No arg. Reads/Two num args. sets module address and echos new setting
   SCmd.addCommand("MB",moduleBlinkRate); // No arg. Reads/One num args. sets module blink rate and echos new setting
   SCmd.addCommand("P",portAddress);      // One num arg. Reads/Two num args. sets port address and echos new setting
   SCmd.addCommand("F",portFunction);     // One num arg. Reads/Two num args. sets port function and echos new setting
@@ -824,7 +811,8 @@ void loop()
         #ifdef DEBUG
         Serial.print(F("INPUT ")); Serial.print(n);
         Serial.print(F(" IN PIN ")); Serial.print(pinMap[n]);
-        Serial.print(F(" CHANGED, INFORM ")); Serial.println(softwareAddress[n]);
+        Serial.print(F(" CHANGED, INFORM ")); Serial.print(softwareAddress[n]);
+        Serial.print(F(" new state: ")); Serial.println(currentState);
         #endif
         LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2);
         // Update state to detect flank (use bit in value2 of SV)
