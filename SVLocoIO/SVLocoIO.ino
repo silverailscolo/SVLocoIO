@@ -120,7 +120,7 @@ lnMsg *LnPacket;
 // Table with addresses of pins already converted, input numbers are stored in a different way than output numbers.
 uint16_t softwareAddress[16]; // composite software address of all the hardware ports
 
-const uint8_t configCodes[16] = {0,15,23,27,31,39,47,55,128,129,136,140,144,145,192,208}; // backup for configOptions lookup, requires more mem
+const uint8_t configCodes[16] = {0,15,23,27,31,39,47,55,91,95,103,104,128,129,136,140,144,145,192,208}; // backup for configOptions lookup, requires more mem
 
 // next info would be nice but memory hog
 
@@ -135,13 +135,15 @@ const uint8_t configCodes[16] = {0,15,23,27,31,39,47,55,128,129,136,140,144,145,
 //  {0, "un"},            // [0] port unused
 //  {15, "tg"},           // [1] toggle
 //  {23, "t"},            // [2] single contact "normal" turnout feedback
-//  {27, "bld"},          // [3] block delayed
-//  {31, "bl"},           // [4] block
-//  {39, "bti"},          // [5] button indirect
-//  {47, "bt"},           // [6] button
+//  {27, "bld"},          // [3] block - active low, delayed
+//  {31, "bl"},           // [4] block - active low
+//  {39, "bti"},          // [5] button - active low, indirect
+//  {47, "bt"},           // [6] button - active low
 //  {55, "t2c"},          // [7] 2 contacts turnout feedback, for 2: .value2 bits 4-7 = 3
-//  {??, "bll"},          // [8] block active low
-//  {??, "blh"},          // [9] block active high
+//  {91, "bhd"},          // [8] block - active high, delayed
+//  {95, "bh"},           // [9] block - active high
+//  {103, "bti"},         // [5] button - active high, indirect
+//  {104, "bt"},          // [6] button - active high
 // outputs (bit 7 == 1)
 //  {128, "off"},         // [a] for 1: .value2 bits 4-7 (JMRI HDL LocoIO Value2A) = 1
 //  {129, "on"},          // [b] for 2: .value2 bits 4-7 = 3
@@ -822,7 +824,7 @@ void loop()
         #ifdef DEBUG
         Serial.print(F("INPUT ")); Serial.print(n);
         Serial.print(F(" IN PIN ")); Serial.print(pinMap[n]);
-       #endif
+        #endif
         if (bitRead(svtable.svt.pincfg[n].cnfg, 6)) // configuration "Active High" is On
         {
           if (currentState == 0) {  // sensor / key activated
