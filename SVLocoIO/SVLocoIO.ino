@@ -19,6 +19,7 @@
  ------------------------------------------------------------------------
  AUTHOR : Dani Guisado - http://www.clubncaldes.com - dguisado@gmail.com
  AUTHOR : Egbert Broerse - https://github.com/silverailscolo
+ AUTHOR : Michael Hochmuth - http://www.simandit.de
  ------------------------------------------------------------------------
  DESCRIPTION:
     SVLocoIO is a LocoNet Interface with 16 I/O that can be individually
@@ -51,6 +52,9 @@
  flashing outputs)
  22/1/2026 Added config over Serial Commands
  22/1/2026 Store version in SV100, board config in SV0
+ Version 110:
+ 4/9/2026 Support additional option Active High by Michael Hochmuth
+ 4/9/2026 Support continuous output at contact2 by Michael Hochmuth
 *************************************************************************/
 
 #include <Arduino.h>
@@ -58,7 +62,7 @@
 #include <EEPROM.h>
 #include <SerialCommand.h>
 
-#define VERSION       107                      // 106 for GCA50a LocoIO (v148) functions, must be type int
+#define VERSION       110                      // 106 for GCA50a LocoIO (v148) functions, must be type int
 #define DEBUG                                  // Uncomment this line to debug through the serial monitor
 #define SERIAL_CMD                             // enable configuration over Serial Monitor
 #define INFORMATPOWERON                        // Uncomment this line to not inform of the inputs state at power on
@@ -116,7 +120,7 @@ lnMsg *LnPacket;
 // Table with addresses of pins already converted, input numbers are stored in a different way than output numbers.
 uint16_t softwareAddress[16]; // composite software address of all the hardware ports
 
-const uint8_t configCodes[16] = {15,23,27,31,91,39,47,55,128,129,136,140,144,145,192,208}; // backup for configOptions lookup, requires more mem
+const uint8_t configCodes[16] = {0,15,23,27,31,39,47,55,91,95,103,104,128,129,136,140,144,145,192,208}; // backup for configOptions lookup, requires more mem
 
 // next info would be nice but memory hog
 
@@ -128,24 +132,29 @@ const uint8_t configCodes[16] = {15,23,27,31,91,39,47,55,128,129,136,140,144,145
 
 //const PROGMEM CNFG_OPTIONS configOptions[16] = {
 // inputs:
-//  {0, "un"},            // [0] unused
+//  {0, "un"},            // [0] port unused
 //  {15, "tg"},           // [1] toggle
 //  {23, "t"},            // [2] single contact "normal" turnout feedback
-//  {27, "bld"},          // [7] block delayed
-//  {31, "bl"},           // [3] block
-//  {39, "bti"},          // [4] button indirect
-//  {47, "bt"},           // [5] button
-//  {55, "t2c"},          // [6] 2 contacts turnout feedback, for 2: .value2 bits 4-7 = 3
+//  {27, "bld"},          // [3] block - active low, delayed
+//  {31, "bl"},           // [4] block - active low
+//  {39, "bti"},          // [5] button - active low, indirect
+//  {47, "bt"},           // [6] button - active low
+//  {55, "t2c"},          // [7] 2 contacts turnout feedback, for 2: .value2 bits 4-7 = 3
+//  {91, "bhd"},          // [8] block - active high, delayed
+//  {95, "bh"},           // [9] block - active high
+//  {103, "bthi"},        // [10] button - active high, indirect
+//  {104, "bth"},         // [11] button - active high
 // outputs (bit 7 == 1)
-//  {128, "off"},         // [8] for 1: .value2 bits 4-7 (JMRI HDL LocoIO Value2A) = 1
-//  {129, "on"},          // [9] for 2: .value2 bits 4-7 = 3
-//  {136, "pls"},         // [10] pulse soft reset
-//  {140, "plh"},         // [11] pulse hard reset
-//  {144, "ofx"},         // [12] off, flashing
-//  {145, "onx"},         // [13] on, flashing
-//  {192, "bl"},          // [14] block
-//  {208, "bl x"},        // [15] block flashing
+//  {128, "off"},         // [a] for 1: .value2 bits 4-7 (JMRI HDL LocoIO Value2A) = 1
+//  {129, "on"},          // [b] for 2: .value2 bits 4-7 = 3
+//  {136, "pls"},         // [c] pulse soft reset
+//  {140, "plh"},         // [d] pulse hard reset
+//  {144, "ofx"},         // [e] off, flashing
+//  {145, "onx"},         // [f] on, flashing
+//  {192, "occ"},         // [g] block occupancy
+//  {208, "ocx"},         // [h] block occ. flashing
 //};
+// TODO: Add Active High codes
 
 // Timers for each input that is configured as "delayed"
 // inputs defined as "delayed" will keep the signal high at least 2 seconds (why 2s? LocoIO docs says: 1-2*blinkDuration)
@@ -784,7 +793,7 @@ void loop()
 
   ******************************* HANDLE INPUTS *****************************************
     handles: (delayed) block detectors, toggles/buttons direct/indirect
-    TODO switch point feedback contact1/contact 2, alternating code for bush buttons (board config)
+    TODO switch point feedback contact1/contact 2, alternating code for push buttons (board config)
   */
 
   for (n = 0; n < 16; n++)
@@ -815,10 +824,34 @@ void loop()
         #ifdef DEBUG
         Serial.print(F("INPUT ")); Serial.print(n);
         Serial.print(F(" IN PIN ")); Serial.print(pinMap[n]);
-        Serial.print(F(" CHANGED, INFORM ")); Serial.print(softwareAddress[n]);
-        Serial.print(F(" new state: ")); Serial.println(currentState);
         #endif
-        LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2);
+        if (bitRead(svtable.svt.pincfg[n].cnfg, 6)) // configuration "Active High" is On
+        {
+          if (currentState == 0) {  // sensor / key activated
+            #ifdef DEBUG
+            Serial.print(" CHANGED, INFORM "); Serial.println(softwareAddress[n]);
+            #endif
+            LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2);
+          } else {                // sensor / key released
+            if (bitRead(svtable.svt.pincfg[n].value2, 5)) {
+              #ifdef DEBUG
+              Serial.print(" CHANGED, INFORM "); Serial.println(softwareAddress[n] - 1);
+              #endif
+              LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2 & 0xDF);
+            } else {
+              #ifdef DEBUG
+              Serial.print(" CHANGED, INFORM "); Serial.println(softwareAddress[n] + 1);
+              #endif
+              LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2 | 0x20);
+            }
+          }
+        } else {
+          #ifdef DEBUG
+          Serial.print(F(" CHANGED, INFORM ")); Serial.print(softwareAddress[n]);
+          Serial.print(F(" new state: ")); Serial.println(currentState);
+          #endif
+          LocoNet.send(OPC_INPUT_REP, svtable.svt.pincfg[n].value1, svtable.svt.pincfg[n].value2);
+        }
         // Update state to detect flank (use bit in value2 of SV)
         bitWrite(svtable.svt.pincfg[n].value2, 4, currentState);
       }
