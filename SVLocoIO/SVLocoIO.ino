@@ -142,8 +142,8 @@ const uint8_t configCodes[16] = {0,15,23,27,31,39,47,55,91,95,103,104,128,129,13
 //  {55, "t2c"},          // [7] 2 contacts turnout feedback, for 2: .value2 bits 4-7 = 3
 //  {91, "bhd"},          // [8] block - active high, delayed
 //  {95, "bh"},           // [9] block - active high
-//  {103, "bti"},         // [10] button - active high, indirect
-//  {104, "bt"},          // [11] button - active high
+//  {103, "bhi"},         // [10] button - active high, indirect
+//  {104, "bh"},          // [11] button - active high
 // outputs (bit 7 == 1)
 //  {128, "off"},         // [a] for 1: .value2 bits 4-7 (JMRI HDL LocoIO Value2A) = 1
 //  {129, "on"},          // [b] for 2: .value2 bits 4-7 = 3
