@@ -54,7 +54,7 @@
  22/1/2026 Store version in SV100, board config in SV0
  Version 110:
  4/9/2026 Support additional option Active High by Michael Hochmuth
- 4/9/2026 Support continuous output at contact2 by Michael Hochmuth
+ 8/9/2026 Support continuous output at contact2 by Michael Hochmuth
 *************************************************************************/
 
 #include <Arduino.h>
@@ -68,7 +68,7 @@
 #define INFORMATPOWERON                        // Uncomment this line to not inform of the inputs state at power on
 #define LN_TX_PIN       7                      // Arduino Pin used as LocoNet Tx; Rx Pin is always the ICP Pin
 #define RST_PIN         6                      // Arduino Pin used as ResetPowerDownPin
-#define LocoLED         4                      // LocoLED lights up when there is LocoNet communication
+#define LocoLED        A6                      // LocoLED lights up when there is LocoNet communication
 #define LocoLED_wait  200                      // LocoLED is always on for 200 msec
 #define PulseTime     300                      // PulseTime for all the Pulse Outputs in msec. - TODO board config SV0 bit y
 #define WaitTime      500                      // Wait Time for all block Inputs in msec.
@@ -111,7 +111,7 @@ typedef struct
 // Union to access the data with the struct or by index
 typedef union {
   SV_TABLE svt;
-  uint8_t data[51];
+  uint8_t data[101];
 } SV_DATA;
 
 SV_DATA svtable;
@@ -120,7 +120,7 @@ lnMsg *LnPacket;
 // Table with addresses of pins already converted, input numbers are stored in a different way than output numbers.
 uint16_t softwareAddress[16]; // composite software address of all the hardware ports
 
-const uint8_t configCodes[16] = {0,15,23,27,31,39,47,55,91,95,103,104,128,129,136,140,144,145,192,208}; // backup for configOptions lookup, requires more mem
+const uint8_t configCodes[20] = {0,15,23,27,31,39,47,55,91,95,103,104,128,129,136,140,144,145,192,208}; // backup for configOptions lookup, requires more mem
 
 // next info would be nice but memory hog
 
@@ -915,7 +915,7 @@ void notifySwitchRequest( uint16_t Address, uint8_t Output, uint8_t Direction )
       // OFF messages are not listened for
       else if (bitRead(svtable.svt.pincfg[n].cnfg, 3) == 0 && bitRead(svtable.svt.pincfg[n].cnfg, 2) == 0 && Output)
       {
-        if (!Direction)
+        if (bitRead(svtable.svt.pincfg[n].value2,5) == Direction)         // added support for contact2
           digitalWrite(pinMap[n], HIGH);
         else
           digitalWrite(pinMap[n], LOW);
